@@ -16,6 +16,7 @@ const initSteps = require('app/core/initSteps');
 const siteGraph = require('app/core/helpers/siteGraph');
 const manifest = require('manifest.json');
 const helmet = require('helmet');
+const hpkp = require('hpkp');
 const csurf = require('csurf');
 const i18nTemplate = require('app/core/utils/i18nTemplate')({
   viewDirectory: './app/views/',
@@ -26,6 +27,7 @@ const logging = require('app/services/logger');
 const events = require('events');
 const idam = require('app/services/idam');
 const signOutRoute = require('app/routes/sign-out');
+const parseBool = require('app/core/utils/parseBool');
 
 // Prevent node warnings re: MaxListenersExceededWarning
 events.EventEmitter.defaultMaxListeners = Infinity;
@@ -35,7 +37,7 @@ const middleware = requireDir(module, `${__dirname}/app/middleware`, { exclude: 
 const healthcheck = require('app/services/healthcheck');
 const nunjucksFilters = require('app/filters/nunjucks');
 
-const PORT = CONF.http.port || CONF.http.porttactical;
+const PORT = CONF.http.port;
 
 const logger = logging.logger(__filename);
 
@@ -50,15 +52,32 @@ exports.init = listenForConnections => {
   app.use(helmet.contentSecurityPolicy({
     directives: {
       fontSrc: ['\'self\' data:'],
-      scriptSrc: ['\'self\'', '\'unsafe-inline\'', 'www.google-analytics.com', 'hmctspiwik.useconnect.co.uk'],
+      scriptSrc: [
+        '\'self\'',
+        '\'unsafe-inline\'',
+        'www.google-analytics.com',
+        'hmctspiwik.useconnect.co.uk',
+        'vcc-eu4.8x8.com',
+        'vcc-eu4b.8x8.com'
+      ],
       connectSrc: ['\'self\''],
       mediaSrc: ['\'self\''],
-      frameSrc: ['\'none\''],
-      imgSrc: ['\'self\'', 'www.google-analytics.com', 'hmctspiwik.useconnect.co.uk']
+      frameSrc: [
+        '\'none\'',
+        'vcc-eu4.8x8.com',
+        'vcc-eu4b.8x8.com'
+      ],
+      imgSrc: [
+        '\'self\'',
+        'www.google-analytics.com',
+        'hmctspiwik.useconnect.co.uk',
+        'vcc-eu4.8x8.com',
+        'vcc-eu4b.8x8.com'
+      ]
     }
   }));
   // http public key pinning
-  app.use(helmet.hpkp({
+  app.use(hpkp({
     maxAge: CONF.ssl.hpkp.maxAge,
     sha256s: CONF.ssl.hpkp.sha256s.split(',')
   }));
@@ -90,7 +109,11 @@ exports.init = listenForConnections => {
     watch: isDev,
     noCache: isDev,
     filters: nunjucksFilters,
-    loader: nunjucks.FileSystemLoader
+    loader: nunjucks.FileSystemLoader,
+    globals: {
+      webchat: CONF.services.webchat,
+      features: { webchat: parseBool(CONF.features.webchat) }
+    }
   });
 
   // Disallow search index idexing
@@ -108,6 +131,7 @@ exports.init = listenForConnections => {
 
   // Middleware to serve static assets
   app.use('/public', express.static(`${__dirname}/public`));
+  app.use('/webchat', express.static(`${__dirname}/node_modules/@hmcts/ctsc-web-chat/assets`));
 
   // Parsing cookies for the stored encrypted session key
   app.use(cookieParser());
@@ -122,7 +146,7 @@ exports.init = listenForConnections => {
   app.set('trust proxy', 1);
   app.use(sessions.prod());
 
-  if (CONF.rateLimiter.enabled) {
+  if (parseBool(CONF.rateLimiter.enabled)) {
     app.use(rateLimiter(app));
   }
 
@@ -201,7 +225,7 @@ exports.init = listenForConnections => {
 
   let http = {};
   if (listenForConnections) {
-    if (CONF.environment === 'development' || CONF.environment === 'testing') {
+    if (CONF.environment === 'development' || CONF.environment === 'testing' || CONF.environment === 'aat') {
       const sslDirectory = path.join(__dirname, 'app', 'resources', 'localhost-ssl');
       const sslOptions = {
         key: fs.readFileSync(path.join(sslDirectory, 'localhost.key')),

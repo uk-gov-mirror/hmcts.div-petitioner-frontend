@@ -14,6 +14,7 @@ const payment = require('app/services/payment');
 const submission = require('app/services/submission');
 const CONF = require('config');
 const idam = require('app/services/idam');
+const serviceCentreCourt = require('test/examples/courts/serviceCentre');
 
 const modulePath = 'app/steps/pay/pay-online-only';
 
@@ -35,6 +36,8 @@ const idamUserDetailsMiddlewareMock = (req, res, next) => {
 };
 
 describe(modulePath, () => {
+  const allocatedCourt = serviceCentreCourt;
+
   beforeEach(() => {
     sinon.stub(applicationFeeMiddleware, 'updateApplicationFeeMiddleware')
       .callsArgWith(two);
@@ -86,6 +89,7 @@ describe(modulePath, () => {
   describe('#handler', () => {
     let getToken = null;
     let create = null;
+    let queryAllPayments = null;
     let update = null;
 
     beforeEach(() => {
@@ -101,6 +105,17 @@ describe(modulePath, () => {
         status: 'created',
         nextUrl: 'https://pay.the.gov/here'
       });
+      // Payment query all payments stub
+      queryAllPayments = sinon.stub().resolves({
+        payments: [
+          {
+            id: '42',
+            reference: 'some-payment-reference',
+            status: 'failed',
+            nextUrl: 'https://pay.the.gov/here'
+          }
+        ]
+      });
       // Submission update stub
       update = sinon.stub().resolves({
         caseId: '1509031793780148',
@@ -108,7 +123,7 @@ describe(modulePath, () => {
         status: 'success'
       });
       sinon.stub(serviceToken, 'setup').returns({ getToken });
-      sinon.stub(payment, 'setup').returns({ create });
+      sinon.stub(payment, 'setup').returns({ create, queryAllPayments });
       sinon.stub(submission, 'setup').returns({ update });
     });
 
@@ -119,17 +134,10 @@ describe(modulePath, () => {
     });
 
     context('Case Id is missing', () => {
-      let session = {}, siteId = '';
+      let session = {};
 
       beforeEach(done => {
-        siteId = 'some-code';
-        session = {
-          court: {
-            someCourt: { siteId },
-            someOtherCourt: { siteId: 'some-other-code' }
-          },
-          courts: 'someCourt'
-        };
+        session = { allocatedCourt: serviceCentreCourt };
 
         withSession(done, agent, session);
       });
@@ -144,7 +152,6 @@ describe(modulePath, () => {
       });
     });
 
-
     context('Success - Amend Petition', () => {
       let session = {};
 
@@ -157,7 +164,7 @@ describe(modulePath, () => {
       beforeEach(done => {
         session = {
           caseId: 'some-case-id',
-          courts: 'eastMidlands',
+          allocatedCourt: serviceCentreCourt,
           previousCaseId: 'old-case-id'
         };
 
@@ -181,7 +188,7 @@ describe(modulePath, () => {
             );
             const serviceCallbackUrl = CONF.services.transformation.baseUrl.concat('/payment-update');
             expect(create.calledWith(
-              sinon.match.any, {}, 'token', 'some-case-id', '1', code, version, amount,
+              sinon.match.any, {}, 'token', 'some-case-id', allocatedCourt.siteId, code, version, amount,
               'Filing an application for a divorce, nullity or civil partnership dissolution – fees order 1.2.',
               returnUrl, serviceCallbackUrl
             )).to.equal(true);
@@ -200,7 +207,7 @@ describe(modulePath, () => {
             );
             const serviceCallbackUrl = '';
             expect(create.calledWith(
-              sinon.match.any, {}, 'token', 'some-case-id', '1', code, version, amount,
+              sinon.match.any, {}, 'token', 'some-case-id', allocatedCourt.siteId, code, version, amount,
               'Filing an application for a divorce, nullity or civil partnership dissolution – fees order 1.2.',
               returnUrl, serviceCallbackUrl
             )).to.equal(true);
@@ -213,7 +220,7 @@ describe(modulePath, () => {
 
 
     context('Success - New Application', () => {
-      let session = {}, siteId = '';
+      let session = {};
 
       const code = CONF.commonProps.applicationFee.feeCode;
       const version = CONF.commonProps.applicationFee.version;
@@ -222,10 +229,9 @@ describe(modulePath, () => {
       );
 
       beforeEach(done => {
-        siteId = '1';
         session = {
           caseId: 'some-case-id',
-          courts: 'eastMidlands'
+          allocatedCourt: serviceCentreCourt
         };
 
         withSession(done, agent, session);
@@ -248,7 +254,7 @@ describe(modulePath, () => {
             );
             const serviceCallbackUrl = CONF.services.transformation.baseUrl.concat('/payment-update');
             expect(create.calledWith(
-              sinon.match.any, {}, 'token', 'some-case-id', '1', code, version, amount,
+              sinon.match.any, {}, 'token', 'some-case-id', allocatedCourt.siteId, code, version, amount,
               'Filing an application for a divorce, nullity or civil partnership dissolution – fees order 1.2.',
               returnUrl, serviceCallbackUrl
             )).to.equal(true);
@@ -267,7 +273,7 @@ describe(modulePath, () => {
             );
             const serviceCallbackUrl = '';
             expect(create.calledWith(
-              sinon.match.any, {}, 'token', 'some-case-id', '1', code, version, amount,
+              sinon.match.any, {}, 'token', 'some-case-id', allocatedCourt.siteId, code, version, amount,
               'Filing an application for a divorce, nullity or civil partnership dissolution – fees order 1.2.',
               returnUrl, serviceCallbackUrl
             )).to.equal(true);
@@ -285,7 +291,7 @@ describe(modulePath, () => {
             expect(code).to.not.eql(null);
             expect(version).to.not.eql(null);
             expect(amount).to.not.eql(null);
-            expect(create.calledWith(sinon.match.any, {}, 'token', session.caseId, siteId, code, version, amount)).to.equal(true);
+            expect(create.calledWith(sinon.match.any, {}, 'token', session.caseId, allocatedCourt.siteId, code, version, amount)).to.equal(true);
           }, 'post');
         });
       });
@@ -313,6 +319,87 @@ describe(modulePath, () => {
               expect(create.args[0][1]).to.eql({});
             }, 'post');
           featureTest(done);
+        });
+      });
+
+      context('check payment history', () => {
+        it('case containing a success payment is redirected to card payment status', done => {
+          payment.setup.restore();
+          queryAllPayments = sinon.stub().resolves({
+            payments: [
+              {
+                payment_reference: 'some-payment-reference-1',
+                status: 'Initiated'
+              },
+              {
+                payment_reference: 'some-payment-reference-2',
+                status: 'Success'
+              }
+            ]
+          });
+          sinon.stub(payment, 'setup').returns({ create, queryAllPayments });
+          // Act.
+          testCustom(done, agent, underTest, cookies, response => {
+            // Assert.
+            expect(create.notCalled).to.equal(true);
+            expect(update.notCalled).to.equal(true);
+            expect(response.status).to.equal(statusCodes.MOVED_TEMPORARILY);
+            expect(response.header.location).to.equal('/pay/card-payment-status');
+          }, 'post');
+        });
+        it('case containing an initiated payment is redirect to an awaiting payment status page', done => {
+          payment.setup.restore();
+
+          queryAllPayments = sinon.stub().resolves({
+            payments: [
+              {
+                payment_reference: 'some-payment-reference-1',
+                status: 'Failed'
+              },
+              {
+                payment_reference: 'some-payment-reference-2',
+                status: 'Initiated'
+              }
+            ]
+          });
+          sinon.stub(payment, 'setup').returns({ create, queryAllPayments });
+
+          // Act.
+          testCustom(done, agent, underTest, cookies, response => {
+            // Assert.
+            expect(create.notCalled).to.equal(true);
+            expect(update.notCalled).to.equal(true);
+            expect(response.status).to.equal(statusCodes.MOVED_TEMPORARILY);
+            expect(response.header.location).to.equal('/pay/awaiting-payment-status');
+          }, 'post');
+        });
+
+        it('case not containing an initiated/success payment directed to gov.uk payment page', done => {
+          payment.setup.restore();
+          queryAllPayments = sinon.stub().resolves({
+            payments: [
+              {
+                id: '42',
+                payment_reference: 'some-payment-reference',
+                status: 'Failed'
+              }
+            ]
+          });
+          sinon.stub(payment, 'setup').returns({ create, queryAllPayments });
+          const testSession = () => {
+            getSession(agent).then(currentSession => {
+              expect(currentSession.paymentMethod).to.equal('card-online');
+              done();
+            });
+          };
+          // Act.
+          testCustom(testSession, agent, underTest, cookies, response => {
+            // Assert.
+            expect(create.calledOnce).to.equal(true);
+            expect(update.calledOnce).to.equal(true);
+            expect(response.status).to.equal(statusCodes.MOVED_TEMPORARILY);
+            expect(response.header.location).to.equal('https://pay.the.gov/here');
+          }, 'post');
         });
       });
 

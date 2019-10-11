@@ -2,6 +2,10 @@
 {%- from "common/errors.html" import errorsFor -%}
 {% from "warning-text/macro.njk" import govukWarningText %}
 
+{% block pageTitle %}
+  {{ common.serviceName }} - {{ content.titleSoFar if fields.nextStepUrl.value else content.title }} - GOV.UK
+{% endblock %}
+
 {% block full_width %}
 
 <div class="check-your-answers">
@@ -15,7 +19,7 @@
   </h1>
 
   {% if errors.length > 0 and not fields.nextStepUrl.value %}
-    <div class="govuk-error-summary" aria-labelledby="error-summary-title" role="alert" tabindex="-1" data-module="error-summary">
+    <div class="govuk-error-summary" aria-labelledby="error-summary-title" role="alert" tabindex="-1" data-module="error-summary" autofocus>
         <h1 class="govuk-error-summary__title" id="error-summary-title">
             {{ common.errorSummaryHeading | safe }}
         </h1>
@@ -42,6 +46,9 @@
            <col span="1" style="width: 40%;">
            <col span="1" style="width: 15%;">
         </colgroup>
+        <caption class="govuk-table__caption">
+          <span class="govuk-visually-hidden">{{ content.tableExplanation }}</span>
+        </caption>
         <tbody class="govuk-table__body">
             {%- for template in templates -%}
                 {{ template.html | safe }}
@@ -134,7 +141,9 @@
 
   <a class="govuk-link" href="/save-return/delete-application">{{ content.deleteApplciation }}</a>
 
-  <br><br>
+  <br><br><br>
+
+  {% include "includes/problem_with_this_page.html" %}
 
 </div>
 

@@ -1,5 +1,5 @@
 provider "azurerm" {
-  version = "1.19.0"
+  version = "1.22.1"
 }
 
 data "azurerm_key_vault" "div_key_vault" {
@@ -9,28 +9,35 @@ data "azurerm_key_vault" "div_key_vault" {
 
 data "azurerm_key_vault_secret" "frontend_secret" {
   name      = "frontend-secret"
-  vault_uri = "${data.azurerm_key_vault.div_key_vault.vault_uri}"
+  key_vault_id = "${data.azurerm_key_vault.div_key_vault.id}"
 }
 
 data "azurerm_key_vault_secret" "idam_secret" {
   name      = "idam-secret"
-  vault_uri = "${data.azurerm_key_vault.div_key_vault.vault_uri}"
+  key_vault_id = "${data.azurerm_key_vault.div_key_vault.id}"
 }
 
 data "azurerm_key_vault_secret" "post_code_token" {
   name      = "os-places-token"
-  vault_uri = "${data.azurerm_key_vault.div_key_vault.vault_uri}"
+  key_vault_id = "${data.azurerm_key_vault.div_key_vault.id}"
 }
 
 data "azurerm_key_vault_secret" "session_secret" {
   name      = "session-secret"
-  vault_uri = "${data.azurerm_key_vault.div_key_vault.vault_uri}"
+  key_vault_id = "${data.azurerm_key_vault.div_key_vault.id}"
 }
 
 data "azurerm_key_vault_secret" "redis_secret" {
   name      = "redis-secret"
-  vault_uri = "${data.azurerm_key_vault.div_key_vault.vault_uri}"
+  key_vault_id = "${data.azurerm_key_vault.div_key_vault.id}"
 }
+
+resource "azurerm_key_vault_secret" "redis_connection_string" {
+  name = "${var.component}-redis-connection-string"
+  value = "redis://ignore:${urlencode(module.redis-cache.access_key)}@${module.redis-cache.host_name}:${module.redis-cache.redis_port}?tls=true"
+  key_vault_id = "${data.azurerm_key_vault.div_key_vault.id}"
+}
+
 
 locals {
   aseName                             = "core-compute-${var.env}"
@@ -54,8 +61,8 @@ locals {
   asp_name = "${var.env == "prod" ? "div-pfe-prod" : "${var.raw_product}-${var.env}"}"
   asp_rg   = "${var.env == "prod" ? "div-pfe-prod" : "${var.raw_product}-${var.env}"}"
 
-  appinsights_name           = "${var.env == "preview" ? "${var.product}-${var.reform_service_name}-appinsights-${var.env}" : "${var.product}-${var.env}"}"
-  appinsights_resource_group = "${var.env == "preview" ? "${var.product}-${var.reform_service_name}-${var.env}" : "${var.product}-${var.env}"}"
+  appinsights_name           = "${var.env == "preview" ? "${var.product}-${var.component}-appinsights-${var.env}" : "${var.product}-${var.env}"}"
+  appinsights_resource_group = "${var.env == "preview" ? "${var.product}-${var.component}-${var.env}" : "${var.product}-${var.env}"}"
 }
 
 data "azurerm_subnet" "core_infra_redis_subnet" {
@@ -65,8 +72,8 @@ data "azurerm_subnet" "core_infra_redis_subnet" {
 }
 
 module "redis-cache" {
-  source      = "git@github.com:hmcts/moj-module-redis?ref=master"
-  product     = "${var.env != "preview" ? "${var.product}-redis" : "${var.product}-${var.reform_service_name}-redis"}"
+  source      = "git@github.com:hmcts/cnp-module-redis?ref=master"
+  product     = "${var.env != "preview" ? "${var.product}-redis" : "${var.product}-${var.component}-redis"}"
   location    = "${var.location}"
   env         = "${var.env}"
   subnetid    = "${data.azurerm_subnet.core_infra_redis_subnet.id}"
@@ -74,8 +81,8 @@ module "redis-cache" {
 }
 
 module "frontend" {
-  source                          = "git@github.com:hmcts/moj-module-webapp.git?ref=master"
-  product                         = "${var.product}-${var.reform_service_name}"
+  source                          = "git@github.com:hmcts/cnp-module-webapp?ref=master"
+  product                         = "${var.product}-${var.component}"
   location                        = "${var.location}"
   env                             = "${var.env}"
   ilbIp                           = "${var.ilbIp}"
@@ -94,13 +101,14 @@ module "frontend" {
     // Node specific vars
     NODE_ENV  = "${var.node_env}"
     NODE_PATH = "${var.node_path}"
+    WEBSITE_NODE_DEFAULT_VERSION = "${var.node_version}"
 
     UV_THREADPOOL_SIZE = "${var.uv_threadpool_size}"
     NODE_CONFIG_DIR    = "${var.node_config_dir}"
 
     // Logging vars
     REFORM_TEAM         = "${var.reform_team}"
-    REFORM_SERVICE_NAME = "${var.reform_service_name}"
+    REFORM_SERVICE_NAME = "${var.component}"
     REFORM_ENVIRONMENT  = "${var.env}"
 
     // Packages
@@ -189,53 +197,15 @@ module "frontend" {
     RATE_LIMITER_TOTAL  = "${var.rate_limiter_total}"
     RATE_LIMITER_EXPIRE = "${var.rate_limiter_expire}"
 
-    // Specific Court Content
-    COURT_EASTMIDLANDS_NAME                 = "${var.court_eastmidlands_name}"
-    COURT_EASTMIDLANDS_CITY                 = "${var.court_eastmidlands_city}"
-    COURT_EASTMIDLANDS_POBOX                = "${var.court_eastmidlands_pobox}"
-    COURT_EASTMIDLANDS_POSTCODE             = "${var.court_eastmidlands_postcode}"
-    COURT_EASTMIDLANDS_OPENINGHOURS         = "${var.court_eastmidlands_openinghours}"
-    COURT_EASTMIDLANDS_EMAIL                = "${var.court_eastmidlands_email}"
-    COURT_EASTMIDLANDS_PHONENUMBER          = "${var.court_eastmidlands_phonenumber}"
-    COURT_EASTMIDLANDS_SITEID               = "${var.court_eastmidlands_siteid}"
-    COURT_WESTMIDLANDS_NAME                 = "${var.court_westmidlands_name}"
-    COURT_WESTMIDLANDS_CITY                 = "${var.court_westmidlands_city}"
-    COURT_WESTMIDLANDS_POBOX                = "${var.court_westmidlands_pobox}"
-    COURT_WESTMIDLANDS_POSTCODE             = "${var.court_westmidlands_postcode}"
-    COURT_WESTMIDLANDS_OPENINGHOURS         = "${var.court_westmidlands_openinghours}"
-    COURT_WESTMIDLANDS_EMAIL                = "${var.court_westmidlands_email}"
-    COURT_WESTMIDLANDS_PHONENUMBER          = "${var.court_westmidlands_phonenumber}"
-    COURT_WESTMIDLANDS_SITEID               = "${var.court_westmidlands_siteid}"
-    COURT_SOUTHWEST_NAME                    = "${var.court_southwest_name}"
-    COURT_SOUTHWEST_CITY                    = "${var.court_southwest_city}"
-    COURT_SOUTHWEST_POBOX                   = "${var.court_southwest_pobox}"
-    COURT_SOUTHWEST_POSTCODE                = "${var.court_southwest_postcode}"
-    COURT_SOUTHWEST_OPENINGHOURS            = "${var.court_southwest_openinghours}"
-    COURT_SOUTHWEST_EMAIL                   = "${var.court_southwest_email}"
-    COURT_SOUTHWEST_PHONENUMBER             = "${var.court_southwest_phonenumber}"
-    COURT_SOUTHWEST_SITEID                  = "${var.court_southwest_siteid}"
-    COURT_NORTHWEST_NAME                    = "${var.court_northwest_name}"
-    COURT_NORTHWEST_ADDRESSNAME             = "${var.court_northwest_addressname}"
-    COURT_NORTHWEST_CITY                    = "${var.court_northwest_city}"
-    COURT_NORTHWEST_STREET                  = "${var.court_northwest_street}"
-    COURT_NORTHWEST_POSTCODE                = "${var.court_northwest_postcode}"
-    COURT_NORTHWEST_OPENINGHOURS            = "${var.court_northwest_openinghours}"
-    COURT_NORTHWEST_EMAIL                   = "${var.court_northwest_email}"
-    COURT_NORTHWEST_PHONENUMBER             = "${var.court_northwest_phonenumber}"
-    COURT_NORTHWEST_SITEID                  = "${var.court_northwest_siteid}"
-
-    SERVICE_CENTRE_NAME                     = "${var.service_centre_name}"
-    COURT_SERVICE_CENTRE_NAME               = "${var.court_service_centre_name}"
-    COURT_SERVICE_CENTRE_CITY               = "${var.court_service_centre_city}"
-    COURT_SERVICE_CENTRE_POBOX              = "${var.court_service_centre_pobox}"
-    COURT_SERVICE_CENTRE_POSTCODE           = "${var.court_service_centre_postcode}"
-    COURT_SERVICE_CENTRE_OPENINGHOURS       = "${var.court_service_centre_openinghours}"
-    COURT_SERVICE_CENTRE_EMAIL              = "${var.court_service_centre_email}"
-    COURT_SERVICE_CENTRE_PHONENUMBER        = "${var.court_service_centre_phonenumber}"
-    COURT_SERVICE_CENTRE_SITEID             = "${var.court_service_centre_siteid}"
-
     // Feature toggling through config
     FEATURE_IDAM                            = "${var.feature_idam}"
     FEATURE_STRATEGIC_PAY                   = "${var.feature_strategic_pay}"
+    FEATURE_WEBCHAT                         = "${var.feature_webchat}"
+
+    WEBCHAT_CHAT_ID = "${var.webchat_chat_id}"
+    WEBCHAT_TENANT = "${var.webchat_tenant}"
+    WEBCHAT_BUTTON_NO_AGENTS = "${var.webchat_button_no_agents}"
+    WEBCHAT_BUTTON_AGENTS_BUSY = "${var.webchat_button_agents_busy}"
+    WEBCHAT_BUTTON_SERVICE_CLOSED = "${var.webchat_button_service_closed}"
   }
 }
